@@ -70,8 +70,43 @@ $client = new Client('your-api-key', 'your-organization-id', [
 | `fromCache`     | `bool`              | Served from a cached prior result.             |
 | `creditsUsed`   | `int`               | Credits consumed by this call.                 |
 | `result`        | `array`             | Freeform sub-status detail.                    |
+| `subStatus`         | `?string`          | Granular reason for the verdict (e.g. `smtp_verified`), or `null`. |
+| `recommendation`    | `?Recommendation`  | Actionable send recommendation, or `null` when absent or unrecognized. |
+| `recommendationValue` | `?string`        | Raw recommendation string as sent by the API, preserved even when unrecognized. |
+| `qualityScore`      | `?int`             | Quality score, 0–100. Distinct from `confidence`; `null` when absent. |
+| `explanation`       | `?string`          | Plain-English sentence describing the verdict, or `null`. |
 
 `ValidationResult::isSafeToSend()` returns `true` only when the status is `valid` or `catch_all`.
+
+`ValidationResult::isSendable()` surfaces the API's actionable recommendation instead: it returns `true` only when `recommendation` is `deliverable` or `send_with_caution`. An absent, `null`, or unrecognized recommendation is treated as not sendable (and never throws).
+
+```php
+$result = $client->validate('user@example.com');
+
+if ($result->isSendable()) {
+    // recommendation is `deliverable` or `send_with_caution`
+}
+
+echo $result->recommendation?->value;  // e.g. "deliverable", or null
+echo $result->qualityScore;            // 0-100, or null
+echo $result->explanation;             // plain-English verdict
+```
+
+### Recommendations
+
+`BounceShift\Recommendation` is a string-backed enum:
+
+`deliverable`, `send_with_caution`, `risky`, `undeliverable`, `unknown`.
+
+```php
+use BounceShift\Recommendation;
+
+Recommendation::Deliverable->isSendable();     // true
+Recommendation::SendWithCaution->isSendable(); // true
+Recommendation::Risky->isSendable();           // false
+Recommendation::Undeliverable->isSendable();   // false
+Recommendation::Unknown->isSendable();         // false
+```
 
 ### Statuses
 

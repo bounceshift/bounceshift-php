@@ -43,9 +43,10 @@ Both the API key **and** the organization ID are required — they are sent as t
 
 ```php
 $client = new Client('your-api-key', 'your-organization-id', [
-    'base_url' => 'https://api.bounceshift.com/v1', // default
-    'timeout'  => 10,   // seconds
-    'retries'  => 2,    // retry attempts on 429 / 5xx
+    'base_url'        => 'https://api.bounceshift.com/v1', // default
+    'timeout'         => 10,   // seconds — max wait for a response (enforced)
+    'connect_timeout' => 5,    // seconds — max wait to establish the connection
+    'retries'         => 2,    // retry attempts on 429 / 5xx
     // Optionally inject your own PSR-18 / PSR-17 implementations:
     // 'http_client'     => $psr18Client,
     // 'request_factory' => $psr17RequestFactory,
@@ -147,6 +148,32 @@ try {
 ```
 
 Your API key is never included in exception messages or logs.
+
+## Fail open — never block your users
+
+On a hot path such as validate-on-signup, a validation problem should never block
+the user. If your account runs out of credits, or the API is down, timing out, or
+unreachable, you almost always want to let the address through rather than crash
+the signup. Use `validateSafe()` — it never throws:
+
+```php
+$result = $client->validateSafe('user@example.com');
+
+if ($result->isDegraded()) {
+    // We couldn't reach a verdict (out of credits / outage / timeout).
+    // The address is returned unverified — let it through, and alert your ops.
+} elseif (! $result->isSafeToSend()) {
+    // A real verdict came back and it's not safe — reject as usual.
+}
+```
+
+A degraded result has status `unknown`, `creditsUsed = 0`, and
+`isDegraded() === true`, so you can always tell "we couldn't check" apart from a
+genuine `unknown` verdict. Reach for `validate()` (which throws the typed
+exceptions above) only when you want to handle each failure yourself.
+
+The `timeout` / `connect_timeout` options bound how long a stalled API can hold
+your request thread before `validateSafe()` returns a degraded result.
 
 ## Testing
 

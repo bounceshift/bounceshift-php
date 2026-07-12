@@ -12,38 +12,6 @@ use BounceShift\Exceptions\RateLimitException;
 use BounceShift\ValidationStatus;
 use GuzzleHttp\Psr7\HttpFactory;
 
-/**
- * @param  array<string, mixed>|null  $bodyOverrides
- */
-function successPayload(array $bodyOverrides = []): array
-{
-    return array_merge([
-        'email' => 'user@example.com',
-        'status' => 'valid',
-        'confidence' => 95,
-        'mx_found' => true,
-        'smtp_valid' => true,
-        'is_disposable' => false,
-        'is_catch_all' => false,
-        'is_role_account' => false,
-        'from_cache' => false,
-        'credits_used' => 1,
-        'result' => ['sub_status' => 'mailbox_exists'],
-    ], $bodyOverrides);
-}
-
-function makeClient(\Psr\Http\Client\ClientInterface $http): Client
-{
-    $factory = new HttpFactory;
-
-    return new Client('secret-key', 'org_123', [
-        'http_client' => $http,
-        'request_factory' => $factory,
-        'stream_factory' => $factory,
-        'retries' => 2,
-    ]);
-}
-
 it('maps a 200 response into a ValidationResult', function () {
     $http = mockHttpClient(jsonResponse(successPayload()));
     $client = makeClient($http);

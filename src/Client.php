@@ -11,7 +11,6 @@ use BounceShift\Exceptions\ForbiddenException;
 use BounceShift\Exceptions\InsufficientCreditsException;
 use BounceShift\Exceptions\RateLimitException;
 use Http\Discovery\Psr17FactoryDiscovery;
-use Http\Discovery\Psr18ClientDiscovery;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
@@ -26,7 +25,7 @@ final class Client
     /**
      * The SDK version, sent in the User-Agent header.
      */
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.1.0';
 
     /**
      * The default production base URL.
@@ -43,6 +42,8 @@ final class Client
 
     private int $timeout;
 
+    private int $connectTimeout;
+
     private int $retries;
 
     private ClientInterface $httpClient;
@@ -55,6 +56,7 @@ final class Client
      * @param  array{
      *     base_url?: string,
      *     timeout?: int,
+     *     connect_timeout?: int,
      *     retries?: int,
      *     http_client?: ClientInterface,
      *     request_factory?: RequestFactoryInterface,
@@ -78,10 +80,32 @@ final class Client
 
         $this->baseUrl = $baseUrl;
         $this->timeout = (int) ($options['timeout'] ?? 10);
+        $this->connectTimeout = (int) ($options['connect_timeout'] ?? 5);
         $this->retries = max(0, (int) ($options['retries'] ?? 2));
-        $this->httpClient = $options['http_client'] ?? Psr18ClientDiscovery::find();
+        // A caller-supplied client is used verbatim; otherwise build one with the
+        // configured timeouts. Relying on discovery alone left `timeout` a dead
+        // option — an overwhelmed API could hang the caller's thread indefinitely.
+        $this->httpClient = $options['http_client'] ?? $this->defaultHttpClient();
         $this->requestFactory = $options['request_factory'] ?? Psr17FactoryDiscovery::findRequestFactory();
         $this->streamFactory = $options['stream_factory'] ?? Psr17FactoryDiscovery::findStreamFactory();
+    }
+
+    /**
+     * Build the default HTTP client with the configured timeouts enforced.
+     *
+     * Guzzle is a hard dependency, so we construct it directly rather than via
+     * PSR-18 discovery: a discovered client carries no timeout, and the whole
+     * point of `timeout`/`connect_timeout` is that a stalled API must not freeze
+     * the caller. `http_errors` is off so error statuses are returned, not thrown
+     * (this class inspects the status code itself).
+     */
+    private function defaultHttpClient(): ClientInterface
+    {
+        return new \GuzzleHttp\Client([
+            'timeout' => $this->timeout,
+            'connect_timeout' => $this->connectTimeout,
+            'http_errors' => false,
+        ]);
     }
 
     /**
@@ -104,6 +128,26 @@ final class Client
         $data = $this->decode($response);
 
         return ValidationResult::fromResponse($data);
+    }
+
+    /**
+     * Validate an email without ever throwing — fail open.
+     *
+     * Intended for hot paths (e.g. validate-on-signup) where a validation problem
+     * must never block the user. On any failure — out of credits (402), an API
+     * outage (5xx), a timeout, a network error, or a malformed response — this
+     * returns a degraded {@see ValidationResult} (status {@see ValidationStatus::Unknown},
+     * {@see ValidationResult::isDegraded()} true) instead of throwing, so the caller
+     * can let the address through rather than crash. Use {@see self::validate()}
+     * when you want to handle the typed exceptions yourself.
+     */
+    public function validateSafe(string $email): ValidationResult
+    {
+        try {
+            return $this->validate($email);
+        } catch (BounceShiftException $e) {
+            return ValidationResult::degraded($email, $e->getMessage());
+        }
     }
 
     /**

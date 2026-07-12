@@ -99,6 +99,45 @@ final readonly class ValidationResult
     }
 
     /**
+     * Build a degraded result for when validation could not be performed.
+     *
+     * Returned by {@see Client::validateSafe()} on any failure (out of credits, an
+     * API outage, a timeout, a network error) so the caller is never blocked. The
+     * verdict is {@see ValidationStatus::Unknown} and {@see self::isDegraded()} is
+     * true, letting callers distinguish "we couldn't check" from a real verdict.
+     */
+    public static function degraded(string $email, ?string $reason = null): self
+    {
+        return new self(
+            email: $email,
+            status: ValidationStatus::Unknown,
+            confidence: 0,
+            mxFound: false,
+            smtpValid: null,
+            isDisposable: false,
+            isCatchAll: false,
+            isRoleAccount: false,
+            fromCache: false,
+            creditsUsed: 0,
+            result: ['degraded' => true, 'reason' => $reason],
+            subStatus: 'validation_unavailable',
+            recommendation: null,
+            recommendationValue: null,
+            qualityScore: null,
+            explanation: 'Validation was unavailable, so the address was returned without a verdict.',
+        );
+    }
+
+    /**
+     * Whether this result is a degraded fail-open placeholder rather than a real
+     * verdict from the API (see {@see self::degraded()} and {@see Client::validateSafe()}).
+     */
+    public function isDegraded(): bool
+    {
+        return ($this->result['degraded'] ?? false) === true;
+    }
+
+    /**
      * Whether this address is considered safe to send to.
      */
     public function isSafeToSend(): bool

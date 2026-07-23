@@ -20,6 +20,11 @@ final readonly class ValidationResult
      *                                         API, preserved even when the enum does not recognize it.
      * @param  ?int  $qualityScore  Quality score 0-100, distinct from {@see self::$confidence}; null when absent.
      * @param  ?string  $explanation  Plain-English sentence describing the verdict, or null when absent.
+     * @param  ?string  $didYouMean  Corrected address when the domain looks like a misspelling of a
+     *                                major provider (gmial.com -> gmail.com), or null. Advisory only:
+     *                                the API validates the address you sent, never the suggestion, and
+     *                                it is populated on any status — including valid and disposable —
+     *                                because misspellings that resolve accept mail and never bounce.
      */
     public function __construct(
         public string $email,
@@ -38,6 +43,7 @@ final readonly class ValidationResult
         public ?string $recommendationValue = null,
         public ?int $qualityScore = null,
         public ?string $explanation = null,
+        public ?string $didYouMean = null,
     ) {}
 
     /**
@@ -58,7 +64,8 @@ final readonly class ValidationResult
      *     sub_status?: string|null,
      *     recommendation?: string|null,
      *     quality_score?: int|null,
-     *     explanation?: string|null
+     *     explanation?: string|null,
+     *     did_you_mean?: string|null
      * }  $data
      *
      * @throws BounceShiftException When the payload carries an unknown status, so
@@ -95,6 +102,7 @@ final readonly class ValidationResult
             recommendationValue: $recommendationValue,
             qualityScore: isset($data['quality_score']) && $data['quality_score'] !== null ? (int) $data['quality_score'] : null,
             explanation: isset($data['explanation']) && $data['explanation'] !== null ? (string) $data['explanation'] : null,
+            didYouMean: isset($data['did_you_mean']) && $data['did_you_mean'] !== null ? (string) $data['did_you_mean'] : null,
         );
     }
 
@@ -125,6 +133,7 @@ final readonly class ValidationResult
             recommendationValue: null,
             qualityScore: null,
             explanation: 'Validation was unavailable, so the address was returned without a verdict.',
+            didYouMean: null,
         );
     }
 
@@ -135,6 +144,18 @@ final readonly class ValidationResult
     public function isDegraded(): bool
     {
         return ($this->result['degraded'] ?? false) === true;
+    }
+
+    /**
+     * Whether the API suggested a correction for a mistyped domain.
+     *
+     * Show the suggestion to the person who typed the address rather than
+     * substituting it: the mailbox at the misspelled domain may genuinely exist,
+     * and silently swapping it means mailing an address you were never given.
+     */
+    public function hasSuggestion(): bool
+    {
+        return $this->didYouMean !== null;
     }
 
     /**

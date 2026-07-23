@@ -171,3 +171,40 @@ it('does not throw on an unknown recommendation string and treats it as not send
         ->and($result->recommendationValue)->toBe('maybe_someday')
         ->and($result->isSendable())->toBeFalse();
 });
+
+it('parses a did_you_mean suggestion', function () {
+    $result = ValidationResult::fromResponse(baseResponse([
+        'email' => 'grace@gmil.com',
+        'did_you_mean' => 'grace@gmail.com',
+    ]));
+
+    expect($result->didYouMean)->toBe('grace@gmail.com')
+        ->and($result->hasSuggestion())->toBeTrue()
+        // Advisory only: the address validated is the one we sent.
+        ->and($result->email)->toBe('grace@gmil.com');
+});
+
+it('reports no suggestion when did_you_mean is absent or null', function (array $overrides) {
+    $result = ValidationResult::fromResponse(baseResponse($overrides));
+
+    expect($result->didYouMean)->toBeNull()
+        ->and($result->hasSuggestion())->toBeFalse();
+})->with([
+    'absent' => [[]],
+    'explicitly null' => [['did_you_mean' => null]],
+]);
+
+it('carries a suggestion on any status, including disposable', function () {
+    // Common misspellings are also disposable domains, and those are exactly the
+    // ones that accept mail and never bounce.
+    $result = ValidationResult::fromResponse(baseResponse([
+        'status' => 'disposable',
+        'did_you_mean' => 'ada@gmail.com',
+    ]));
+
+    expect($result->didYouMean)->toBe('ada@gmail.com');
+});
+
+it('has no suggestion on a degraded result', function () {
+    expect(ValidationResult::degraded('grace@gmil.com')->hasSuggestion())->toBeFalse();
+});

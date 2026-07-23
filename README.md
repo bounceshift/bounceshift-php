@@ -76,6 +76,7 @@ $client = new Client('your-api-key', 'your-organization-id', [
 | `recommendationValue` | `?string`        | Raw recommendation string as sent by the API, preserved even when unrecognized. |
 | `qualityScore`      | `?int`             | Quality score, 0–100. Distinct from `confidence`; `null` when absent. |
 | `explanation`       | `?string`          | Plain-English sentence describing the verdict, or `null`. |
+| `didYouMean`        | `?string`          | Corrected address when the domain looks like a misspelling (`gmial.com` → `gmail.com`), or `null`. |
 
 `ValidationResult::isSafeToSend()` returns `true` only when the status is `valid` or `catch_all`.
 
@@ -92,6 +93,24 @@ echo $result->recommendation?->value;  // e.g. "deliverable", or null
 echo $result->qualityScore;            // 0-100, or null
 echo $result->explanation;             // plain-English verdict
 ```
+
+### Typo suggestions
+
+`didYouMean` carries the corrected address when the domain is within a character or two of a major provider, and `null` otherwise. `hasSuggestion()` is the convenience check.
+
+```php
+$result = $client->validate('grace@gmil.com');
+
+if ($result->hasSuggestion()) {
+    // "grace@gmail.com" — show it, don't swap it
+    echo $result->didYouMean;
+}
+```
+
+Two things to know:
+
+- **It is advisory.** The API validates the address you sent, never the suggestion, and the verdict is unaffected. Put the correction in front of the person who typed it rather than substituting it — the mailbox at the misspelled domain may genuinely exist, and swapping it silently means mailing an address you were never given.
+- **It is populated on any status**, including `valid` and `disposable`. That is deliberate: misspellings like `gmil.com` and `hotmial.com` are registered and accept mail, so they never bounce and never appear in a bounce report. The suggestion is the only signal you get for them.
 
 ### Recommendations
 
